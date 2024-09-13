@@ -47,7 +47,7 @@ const readConfig = () => {
     return {
       apiKey: decrypt(config.apiKey),
       baseURL: config.baseURL,
-      model: config.model || 'gpt-4'
+      model: config.model || 'gpt-4-turbo'
     };
   } else {
     return null;
@@ -202,7 +202,7 @@ const initOpenAI = async () => {
       if (input.trim()) {
         let message = input;
         if (urlContent || additionalMessage) {
-          message = `${urlContent}\n${additionalMessage}\n=====================\n${input}`;
+          message = `${urlContent}======================\n${additionalMessage}\n=====================\n${input}`;
         }
         console.log(`You: ${input}`);
         const reply = await fetchOpenAIResponse(message, temperature);
