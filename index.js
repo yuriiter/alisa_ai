@@ -9,6 +9,7 @@ import axios from 'axios';
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import { exit } from 'process';
+import { convert } from 'html-to-text'
 
 const CONFIG_PATH = path.join(process.env.HOME || process.env.USERPROFILE, '.config/alisa/config.json');
 const PRIVATE_KEY_PATH = path.join(process.env.HOME || process.env.USERPROFILE, '.config/alisa/private.pem');
@@ -95,7 +96,7 @@ const fetchFromUrl = async (url) => {
 
   try {
     const response = await axios.get(url);
-    return response.data;
+    return convert(response.data, { wordwrap: 130 });
   } catch (error) {
     console.error('Error fetching URL:', error);
     return 'Error: Unable to fetch URL content';

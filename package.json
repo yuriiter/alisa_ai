@@ -1,6 +1,6 @@
 {
   "name": "alisa_ai",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Universal OpenAI CLI client with piping and URL analysis",
   "main": "index.js",
   "bin": {
@@ -22,10 +22,10 @@
   "dependencies": {
     "axios": "^1.7.7",
     "crypto": "^1.0.1",
+    "html-to-text": "^9.0.5",
     "openai": "^4.60.0",
     "yargs": "^17.7.2"
   },
-  "devDependencies": {},
   "repository": {
     "type": "git",
     "url": "git+https://github.com/yuriiter/alisa_ai.git"
