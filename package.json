@@ -1,21 +1,39 @@
 {
-  "name": "openai_cli",
+  "name": "alisa_ai",
   "version": "1.0.0",
-  "description": "",
+  "description": "Universal OpenAI CLI client with piping and URL analysis",
   "main": "index.js",
+  "bin": {
+    "alisa": "index.js"
+  },
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "type": "module",
-  "keywords": [],
-  "author": "",
+  "keywords": [
+    "OpenAI",
+    "CLI",
+    "Node.js",
+    "ChatGPT",
+    "Llama",
+    "AI",
+    "Chat"
+  ],
+  "author": "Yurii Tereshchenko",
   "license": "ISC",
   "dependencies": {
     "axios": "^1.7.7",
-    "cli-spinner": "^0.2.10",
     "crypto": "^1.0.1",
-    "ink": "^5.0.1",
     "openai": "^4.60.0",
     "yargs": "^17.7.2"
-  }
+  },
+  "devDependencies": {},
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/yuriiter/alisa_ai.git"
+  },
+  "bugs": {
+    "url": "https://github.com/yuriiter/alisa_ai/issues"
+  },
+  "homepage": "https://github.com/yuriiter/alisa_ai#readme"
 }

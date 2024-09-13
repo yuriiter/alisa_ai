@@ -12,7 +12,17 @@ const CONFIG_PATH = path.join(process.env.HOME || process.env.USERPROFILE, '.con
 const PRIVATE_KEY_PATH = path.join(process.env.HOME || process.env.USERPROFILE, '.config/alisa/private.pem');
 const PUBLIC_KEY_PATH = path.join(process.env.HOME || process.env.USERPROFILE, '.config/alisa/public.pem');
 
+const ensureDirectoryExists = (filePath) => {
+  const directory = path.dirname(filePath);
+  if (!fs.existsSync(directory)) {
+    fs.mkdirSync(directory, { recursive: true });
+  }
+};
+
 const generateKeyPair = () => {
+  ensureDirectoryExists(PRIVATE_KEY_PATH);
+  ensureDirectoryExists(PUBLIC_KEY_PATH);
+
   const { publicKey, privateKey } = crypto.generateKeyPairSync('rsa', {
     modulusLength: 2048,
   });
@@ -36,15 +46,15 @@ const readConfig = () => {
     const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
     return {
       apiKey: decrypt(config.apiKey),
-      baseURL: decrypt(config.baseURL),
-      model: config.model
+      baseURL: config.baseURL,
+      model: config.model || 'gpt-4'
     };
   } else {
     return null;
   }
 };
 
-const promptForConfig = async () => {
+const promptForApiKey = async () => {
   const rl = createInterface({
     input: process.stdin,
     output: process.stdout
@@ -53,20 +63,34 @@ const promptForConfig = async () => {
   const question = (query) => new Promise(resolve => rl.question(query, resolve));
 
   const apiKey = await question('Enter your API Key: ');
-  const baseURL = await question('Enter your API Base URL: ');
 
   rl.close();
 
+  return apiKey;
+};
+
+const saveConfig = (apiKey, baseURL, model) => {
   const config = {
     apiKey: encrypt(apiKey),
-    baseURL: encrypt(baseURL)
+    baseURL,
+    model
   };
 
-  fs.mkdirSync(path.dirname(CONFIG_PATH), { recursive: true });
+  ensureDirectoryExists(CONFIG_PATH);
+
   fs.writeFileSync(CONFIG_PATH, JSON.stringify(config, null, 2), 'utf-8');
 };
 
 const fetchFromUrl = async (url) => {
+  if (url === undefined || url.trim() === '' || url === 'undefined') return '';
+
+  let urlObject;
+  try {
+    urlObject = new URL(url);
+  } catch (e) {
+    return 'Invalid URL. Ignore this message';
+  }
+
   try {
     const response = await axios.get(url);
     return response.data;
@@ -77,27 +101,81 @@ const fetchFromUrl = async (url) => {
 };
 
 const initOpenAI = async () => {
+  const argv = yargs(hideBin(process.argv))
+    .option('api-key', {
+      alias: 'k',
+      type: 'string',
+      description: 'API Key for OpenAI'
+    })
+    .option('base-url', {
+      type: 'string',
+      description: 'Base URL for OpenAI API'
+    })
+    .option('model-name', {
+      type: 'string',
+      description: 'Model name to use'
+    })
+    .option('temperature', {
+      alias: 't',
+      type: 'number',
+      description: 'Set the temperature for OpenAI responses',
+      default: 0.7
+    })
+    .option('url', {
+      alias: 'u',
+      type: 'string',
+      description: 'Fetch and prepend content from the specified URL'
+    })
+    .option('message', {
+      alias: 'm',
+      type: 'string',
+      description: 'Additional message to prepend to the input'
+    })
+    .option('chat', {
+      type: 'boolean',
+      description: 'Enable chat mode'
+    })
+    .help()
+    .argv;
+
+  const apiKey = argv['api-key'];
+  const baseURL = argv['base-url'];
+  const model = argv['model-name'];
+  const temperature = argv.temperature;
+  const url = argv.url;
+  const additionalMessage = argv.message;
+  const chatModeEnabled = argv.chat;
+
+  let finalApiKey = apiKey;
+  let urlContent = '';
+
+  if (!fs.existsSync(PRIVATE_KEY_PATH) || !fs.existsSync(PUBLIC_KEY_PATH)) {
+    console.log('Keys not found. Generating new key pair...');
+    generateKeyPair();
+  }
+
   const config = readConfig();
 
-  if (!config) {
-    console.log('Configuration not found. Generating keys and prompting for API credentials...');
-    generateKeyPair();
-    promptForConfig().then(() => {
-      console.log('Configuration saved.');
-      initOpenAI();
-    });
-    return;
+  if (!finalApiKey) {
+    finalApiKey = config ? config.apiKey : null;
+  }
+
+  if (!finalApiKey) {
+    console.log('API Key is missing. Prompting for API Key...');
+    finalApiKey = await promptForApiKey();
+    saveConfig(finalApiKey, baseURL, model);
+    console.log('Configuration saved.');
   }
 
   const openai = new OpenAI({
-    apiKey: process.env.API_KEY || config.apiKey,
-    baseURL: process.env.API_BASE_URL || config.baseURL
+    apiKey: finalApiKey,
+    baseURL: baseURL || config?.baseURL
   });
 
   const fetchOpenAIResponse = async (message, temperature = 0.7) => {
     try {
       const response = await openai.chat.completions.create({
-        model: process.env.MODEL || config.model,
+        model: model || config?.model,
         messages: [{ role: 'user', content: message }],
         temperature
       });
@@ -107,6 +185,10 @@ const initOpenAI = async () => {
       return 'Error: Unable to fetch response';
     }
   };
+
+  if (url) {
+    urlContent = await fetchFromUrl(url);
+  }
 
   const rl = createInterface({
     input: process.stdin,
@@ -118,8 +200,12 @@ const initOpenAI = async () => {
 
     rl.on('line', async (input) => {
       if (input.trim()) {
+        let message = input;
+        if (urlContent || additionalMessage) {
+          message = `${urlContent}\n${additionalMessage}\n=====================\n${input}`;
+        }
         console.log(`You: ${input}`);
-        const reply = await fetchOpenAIResponse(input, temperature);
+        const reply = await fetchOpenAIResponse(message, temperature);
         console.log(`ChatGPT: ${reply}`);
       }
     });
@@ -145,9 +231,6 @@ const initOpenAI = async () => {
   const commandLineInputMode = async (args) => {
     const input = args._.join(' ');
 
-    const urlContent = args.url ? await fetchFromUrl(args.url) : '';
-    const additionalMessage = args.message || '';
-
     const fullMessage = [urlContent, additionalMessage, input].filter(Boolean).join('\n=====================\n');
 
     if (fullMessage.trim()) {
@@ -157,70 +240,17 @@ const initOpenAI = async () => {
     }
   };
 
-  const argv = yargs(hideBin(process.argv))
-    .option('chat', {
-      alias: 'c',
-      type: 'boolean',
-      description: 'Enable chat mode'
-    })
-    .option('temperature', {
-      alias: 't',
-      type: 'number',
-      description: 'Set the temperature for OpenAI responses',
-      default: 0.7
-    })
-    .option('url', {
-      alias: 'u',
-      type: 'string',
-      description: 'Fetch and prepend content from the specified URL'
-    })
-    .option('message', {
-      alias: 'm',
-      type: 'string',
-      description: 'Additional message to prepend to the input'
-    })
-    .option('reset', {
-      alias: 'r',
-      type: 'boolean',
-      description: 'Reset configuration and prompt for API credentials'
-    })
-    .option('model', {
-      type: 'string',
-      description: 'Specify the model to use'
-    })
-    .help()
-    .argv;
-
-  const temperature = argv.temperature;
-  const url = argv.url;
-  const additionalMessage = argv.message;
-
-  if (argv.reset) {
-    console.log('Resetting configuration...');
-    fs.unlinkSync(CONFIG_PATH);
-    generateKeyPair();
-    promptForConfig().then(() => {
-      console.log('Configuration saved.');
-      initOpenAI();
-    });
-    return;
-  }
-
-  if (url && !argv._.length) {
-    const urlContent = await fetchFromUrl(url);
-    const fullMessage = [urlContent, additionalMessage].filter(Boolean).join('\n=====================\n');
-    const reply = await fetchOpenAIResponse(fullMessage, temperature);
-    console.log(reply);
-  } else if (argv.chat) {
-    chatMode(temperature);
-  } else if (argv._.length > 0) {
-    commandLineInputMode(argv);
+  if (chatModeEnabled) {
+    await chatMode(temperature);
+  } else if ((argv._.length > 0 || urlContent || additionalMessage) && process.stdin.isTTY) {
+    await commandLineInputMode(argv);
   } else if (process.stdin.isTTY) {
-    // If stdin is TTY and no arguments provided, start chat mode
-    chatMode(temperature);
+    // If stdin is TTY and no arguments provided, exit
+    console.log('No arguments provided. Exiting.');
+    exit(0);
   } else {
     // If no arguments and stdin is not TTY, start pipe mode
-    pipeMode(temperature, await fetchFromUrl(url), additionalMessage);
+    await pipeMode(temperature, urlContent, additionalMessage);
   }
 };
 
