@@ -1,3 +1,5 @@
+#!/usr/bin/env node
+
 import { OpenAI } from 'openai';
 import { createInterface } from 'readline';
 import fs from 'fs';
@@ -45,7 +47,7 @@ const readConfig = () => {
   if (fs.existsSync(CONFIG_PATH)) {
     const config = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf-8'));
     return {
-      apiKey: decrypt(config.apiKey),
+      apiKey: config.apiKey ? decrypt(config.apiKey) : null,
       baseURL: config.baseURL,
       model: config.model || 'gpt-4-turbo'
     };
@@ -163,7 +165,7 @@ const initOpenAI = async () => {
   if (!finalApiKey) {
     console.log('API Key is missing. Prompting for API Key...');
     finalApiKey = await promptForApiKey();
-    saveConfig(finalApiKey, baseURL, model);
+    saveConfig(finalApiKey, config?.baseURL || baseURL, config?.model || model);
     console.log('Configuration saved.');
   }
 
